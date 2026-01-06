@@ -1,6 +1,12 @@
 # mautrix-whatsapp
 A Matrix-WhatsApp puppeting bridge based on [whatsmeow](https://github.com/tulir/whatsmeow).
 
+## Mobile mock chat history app
+
+If you want a **local-only mobile app** to create and view **mock chat history** (no network / no WhatsApp connectivity), see:
+
+- `mobile/README.md`
+
 ## Documentation
 All setup and usage instructions are located on [docs.mau.fi]. Some quick links:
 
