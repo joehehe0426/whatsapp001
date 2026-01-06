@@ -1,7 +1,4 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 
 import '../history_controller.dart';
@@ -10,8 +7,13 @@ import 'chat_screen.dart';
 
 class ChatListScreen extends StatefulWidget {
   final HistoryController controller;
+  final bool showArchivedOnly;
 
-  const ChatListScreen({super.key, required this.controller});
+  const ChatListScreen({
+    super.key,
+    required this.controller,
+    this.showArchivedOnly = false,
+  });
 
   @override
   State<ChatListScreen> createState() => _ChatListScreenState();
@@ -37,96 +39,182 @@ class _ChatListScreenState extends State<ChatListScreen> {
     setState(() {});
   }
 
-  Future<void> _import() async {
-    final raw = await _promptText(
-      title: 'Import JSON',
-      label: 'Paste exported JSON',
-      maxLines: 12,
-      primaryAction: 'Import',
+  Future<void> _createGroup() async {
+    final title = await _promptText(
+      title: 'New group',
+      label: 'Group name',
+      primaryAction: 'Next',
     );
-    if (raw == null) return;
-    try {
-      await widget.controller.importJson(raw);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Imported history')),
-      );
-      setState(() {});
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Import failed: $e')),
-      );
+    if (title == null) return;
+    final membersRaw = await _promptText(
+      title: 'Group members',
+      label: 'Names (comma separated)',
+      primaryAction: 'Create',
+      maxLines: 2,
+    );
+    if (membersRaw == null) return;
+    final members = membersRaw
+        .split(',')
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    final chat = await widget.controller.createGroup(title: title, memberNames: members);
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ChatScreen(controller: widget.controller, chatId: chat.id),
+      ),
+    );
+    setState(() {});
+  }
+
+  Future<void> _fabMenu() async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.person_add_alt_outlined),
+              title: const Text('New chat'),
+              onTap: () => Navigator.of(context).pop('chat'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.group_add_outlined),
+              title: const Text('New group'),
+              onTap: () => Navigator.of(context).pop('group'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+    if (action == 'chat') {
+      await _createChat();
+    } else if (action == 'group') {
+      await _createGroup();
     }
   }
 
-  Future<void> _export() async {
-    final raw = await widget.controller.exportJson();
-    await Clipboard.setData(ClipboardData(text: raw));
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Export copied to clipboard')),
+  Future<void> _openChatActions(ChatThread chat) async {
+    final action = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: Icon(chat.isPinned ? Icons.push_pin : Icons.push_pin_outlined),
+              title: Text(chat.isPinned ? 'Unpin' : 'Pin'),
+              onTap: () => Navigator.of(context).pop('pin'),
+            ),
+            ListTile(
+              leading: Icon(chat.isArchived ? Icons.archive_outlined : Icons.archive),
+              title: Text(chat.isArchived ? 'Unarchive' : 'Archive'),
+              onTap: () => Navigator.of(context).pop('archive'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.mark_chat_unread_outlined),
+              title: const Text('Mark unread'),
+              onTap: () => Navigator.of(context).pop('unread'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete chat'),
+              onTap: () => Navigator.of(context).pop('delete'),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
     );
-  }
-
-  Future<void> _resetSample() async {
-    await widget.controller.resetToSample();
-    if (!mounted) return;
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Reset to sample history')),
-    );
+    switch (action) {
+      case 'pin':
+        await widget.controller.setPinned(chatId: chat.id, pinned: !chat.isPinned);
+        if (!mounted) return;
+        setState(() {});
+        break;
+      case 'archive':
+        await widget.controller.setArchived(chatId: chat.id, archived: !chat.isArchived);
+        if (!mounted) return;
+        setState(() {});
+        break;
+      case 'unread':
+        await widget.controller.markUnread(chat.id, count: 1);
+        if (!mounted) return;
+        setState(() {});
+        break;
+      case 'delete':
+        await widget.controller.deleteChat(chat.id);
+        if (!mounted) return;
+        setState(() {});
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final chats = widget.controller.chats;
+    final archivedCount = widget.controller.chatsFiltered(archived: true).length;
+    final chats = widget.controller.chatsFiltered(archived: widget.showArchivedOnly);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chats'),
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: (v) async {
-              switch (v) {
-                case 'import':
-                  await _import();
-                  break;
-                case 'export':
-                  await _export();
-                  break;
-                case 'reset':
-                  await _resetSample();
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'import', child: Text('Import JSON')),
-              PopupMenuItem(value: 'export', child: Text('Export JSON (copy)')),
-              PopupMenuItem(value: 'reset', child: Text('Reset to sample')),
-            ],
-          ),
-        ],
+        title: Text(widget.showArchivedOnly ? 'Archived' : 'Chats'),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _createChat,
-        child: const Icon(Icons.chat_bubble_outline),
-      ),
-      body: chats.isEmpty
+      floatingActionButton: widget.showArchivedOnly
+          ? null
+          : FloatingActionButton(
+              onPressed: _fabMenu,
+              child: const Icon(Icons.add_comment_outlined),
+            ),
+      body: (chats.isEmpty && (widget.showArchivedOnly || archivedCount == 0))
           ? const _EmptyState()
           : ListView.separated(
-              itemCount: chats.length,
+              itemCount: chats.length + ((widget.showArchivedOnly || archivedCount == 0) ? 0 : 1),
               separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (context, i) {
-                final chat = chats[i];
+                if (!widget.showArchivedOnly && archivedCount > 0 && i == 0) {
+                  return ListTile(
+                    leading: const Icon(Icons.archive_outlined),
+                    title: const Text('Archived'),
+                    trailing: Text('$archivedCount'),
+                    onTap: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ChatListScreen(
+                            controller: widget.controller,
+                            showArchivedOnly: true,
+                          ),
+                        ),
+                      );
+                      setState(() {});
+                    },
+                  );
+                }
+
+                final idx = i - ((!widget.showArchivedOnly && archivedCount > 0) ? 1 : 0);
+                final chat = chats[idx];
                 final last = chat.lastMessage;
-                final subtitle = last?.text ?? 'No messages yet';
+                final subtitle = _subtitleForLastMessage(last);
                 final trailing = last == null ? '' : _timeFmt.format(last.timestamp);
                 return ListTile(
-                  leading: _Avatar(name: chat.title),
-                  title: Text(
-                    chat.title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+                  leading: _Avatar(name: chat.title, isGroup: chat.participants.length > 2),
+                  title: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          chat.title,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (chat.isPinned) ...[
+                        const SizedBox(width: 6),
+                        Icon(Icons.push_pin, size: 16, color: Theme.of(context).hintColor),
+                      ],
+                    ],
                   ),
                   subtitle: Text(
                     subtitle,
@@ -144,13 +232,13 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       ],
                     ],
                   ),
+                  onLongPress: () => _openChatActions(chat),
                   onTap: () async {
                     await widget.controller.markRead(chat.id);
                     if (!mounted) return;
                     await Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) =>
-                            ChatScreen(controller: widget.controller, chatId: chat.id),
+                        builder: (_) => ChatScreen(controller: widget.controller, chatId: chat.id),
                       ),
                     );
                     setState(() {});
@@ -159,6 +247,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
               },
             ),
     );
+  }
+
+  String _subtitleForLastMessage(Message? last) {
+    if (last == null) return 'No messages yet';
+    if (last.isDeleted) return 'This message was deleted';
+    if (last.kind == MessageKind.attachment) {
+      return last.attachmentLabel ?? 'Attachment';
+    }
+    return last.text;
   }
 
   Future<String?> _promptText({
@@ -250,8 +347,9 @@ class _UnreadBadge extends StatelessWidget {
 
 class _Avatar extends StatelessWidget {
   final String name;
+  final bool isGroup;
 
-  const _Avatar({required this.name});
+  const _Avatar({required this.name, required this.isGroup});
 
   @override
   Widget build(BuildContext context) {
@@ -259,7 +357,9 @@ class _Avatar extends StatelessWidget {
         ? '?'
         : name.trim().split(RegExp(r'\\s+')).take(2).map((p) => p[0]).join().toUpperCase();
     return CircleAvatar(
-      child: Text(initials),
+      child: isGroup
+          ? const Icon(Icons.group_outlined)
+          : Text(initials),
     );
   }
 }

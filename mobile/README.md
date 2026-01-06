@@ -32,10 +32,15 @@ flutter pub get && flutter run
 
 ### Features
 
-- Chat list UI (recent chats, unread badge)
-- Chat view with message bubbles
+- Chats tab (recent chats, unread badge, pinned, archived)
+- Chat view with message bubbles + long-press actions:
+  - Reply, star, edit (your messages), delete (local)
+  - Receipt ticks for your messages (sent/delivered/read)
 - Compose messages as "me" or "them"
-- Create/rename chats
+- Create chats + groups
+- Attachment placeholders (photo/video/document)
+- Status tab (mock status list, viewed/unviewed)
+- Calls tab (mock call log: incoming/outgoing/missed, voice/video)
 - Import/export history as JSON (copy/paste)
 
 ### Data storage

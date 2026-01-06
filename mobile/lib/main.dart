@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'history_controller.dart';
 import 'history_store.dart';
-import 'screens/chat_list_screen.dart';
+import 'screens/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -30,7 +30,7 @@ class ChatHistoryMockApp extends StatelessWidget {
         colorScheme: scheme,
         useMaterial3: true,
       ),
-      home: ChatListScreen(controller: controller),
+      home: HomeScreen(controller: controller),
     );
   }
 }
